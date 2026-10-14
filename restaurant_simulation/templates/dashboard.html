@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Viola's Cuisine — Live Simulation</title>
+<style>
+  /* System-font stacks (no network calls, no render-blocking) */
+  :root {
+    --font-serif: Georgia, "Iowan Old Style", "Palatino Linotype",
+                  "Book Antiqua", Palatino, serif;
+    --font-sans:  -apple-system, BlinkMacSystemFont, "Segoe UI",
+                  system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono:  ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas,
+                  "Liberation Mono", monospace;
+  }
+  :root {
+    /* Restaurant palette: ivory parchment + deep burgundy + brushed gold */
+    --bg:        #f3efe6;
+    --bg-warm:   #ebe5d6;
+    --panel:     #ffffff;
+    --panel-2:   #fbf8f1;
+    --ink:       #1f1a16;
+    --ink-soft:  #4b4339;
+    --muted:     #8b8275;
+    --line:      #e3dcc9;
+    --line-soft: #efeadb;
+
+    --burgundy:  #5C1A2B;
+    --burgundy-deep: #3d0f1c;
+    --burgundy-light: #7d2a3f;
+    --gold:      #b8924e;
+    --gold-soft: #d9b97a;
+    --cream:     #f7f2e3;
+
+    --waiting:   #b9b1a2;
+    --cooking:   #d98a2b;
+    --ready:     #5a8a3e;
+    --served:    #4a7a8a;
+
+    --grill:     #c1543a;
+    --pasta:     #c79a2b;
+    --dessert:   #8e6db0;
+
+    --radius:    10px;
+    --radius-sm: 6px;
+    --shadow:    0 1px 2px rgba(40,28,18,0.06),
+                 0 4px 14px rgba(40,28,18,0.05);
+    --shadow-lg: 0 4px 24px rgba(40,28,18,0.12);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font-sans);
+    margin: 0;
+    background:
+      radial-gradient(1200px 600px at -10% -20%, #ece4d0 0%, transparent 60%),
+      radial-gradient(900px 600px at 110% 110%, #e7dec6 0%, transparent 60%),
+      var(--bg);
+    color: var(--ink);
+    font-size: 13.5px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* =================================================================
+     LAYOUT
+     ================================================================= */
+  .app {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    min-height: 100vh;
+  }
+
+  /* =================================================================
+     SIDEBAR
+     ================================================================= */
+  .sidebar {
+    background: linear-gradient(180deg, #2d1419 0%, #1c0b10 100%);
+    color: #efe6d2;
+    padding: 22px 22px 28px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    border-right: 1px solid #1a0a0e;
+    box-shadow: 4px 0 20px rgba(0,0,0,0.12);
+  }
+  .sidebar::-webkit-scrollbar { width: 6px; }
+  .sidebar::-webkit-scrollbar-thumb {
+    background: rgba(184,146,78,0.35); border-radius: 3px;
+  }
+
+  .brand {
+    display: flex; align-items: center; gap: 12px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid rgba(184,146,78,0.25);
+    margin-bottom: 18px;
+  }
+  .brand .logo {
+    width: 42px; height: 42px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--gold) 0%, #8d6c34 100%);
+    display: grid; place-items: center;
+    color: #2d1419; font-weight: 700; font-family: var(--font-serif);
+    font-size: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.2);
+  }
+  .brand .title {
+    font-family: var(--font-serif);
+    font-size: 17px; font-weight: 700; letter-spacing: 0.2px;
+    color: #f7eed4;
+  }
+  .brand .subtitle {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 2px;
+    color: var(--gold-soft); margin-top: 2px;
+  }
+
+  .panel-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 1.8px;
+    color: var(--gold); font-weight: 600;
+    margin: 18px 0 10px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .panel-label::after {
+    content: ""; flex: 1; height: 1px;
+    background: linear-gradient(to right, rgba(184,146,78,0.4), transparent);
+  }
+
+  /* Config controls */
+  .control { margin-bottom: 14px; }
+  .control .row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 4px;
+  }
+  .control label {
+    font-size: 12px; color: #d8cdb0; font-weight: 500;
+  }
+  .control .val {
+    font-family: var(--font-mono);
+    font-size: 12px; color: var(--gold-soft); font-weight: 600;
+  }
+  .control input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 4px; border-radius: 2px;
+    background: rgba(184,146,78,0.2); outline: none;
+    margin: 6px 0 0;
+  }
+  .control input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--gold); cursor: pointer;
+    border: 2px solid #2d1419;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    transition: transform 0.15s;
+  }
+  .control input[type=range]::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+  }
+  .control input[type=range]::-moz-range-thumb {
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--gold); cursor: pointer;
+    border: 2px solid #2d1419;
+  }
+  .control .hint {
+    font-size: 10.5px; color: #998b6a; margin-top: 3px;
+    line-height: 1.4;
+  }
+
+  /* Toggle switch */
+  .toggle {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; padding: 10px 12px; margin-bottom: 8px;
+    background: rgba(184,146,78,0.07);
+    border: 1px solid rgba(184,146,78,0.18);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+  .toggle:hover { background: rgba(184,146,78,0.12); }
+  .toggle .text { font-size: 12px; color: #efe6d2; font-weight: 500; }
+  .toggle .text small { display: block; font-size: 10px;
+                        color: #998b6a; font-weight: 400; margin-top: 2px; }
+  .switch {
+    width: 34px; height: 18px; border-radius: 9px;
+    background: rgba(255,255,255,0.15); position: relative;
+    transition: background 0.2s; flex-shrink: 0;
+  }
+  .switch::after {
+    content: ""; position: absolute;
+    top: 2px; left: 2px;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: #efe6d2; transition: transform 0.2s;
+  }
+  .toggle.on .switch { background: var(--gold); }
+  .toggle.on .switch::after { transform: translateX(16px); background: #2d1419; }
+
+  /* Action buttons */
+  .actions { display: grid; gap: 8px; margin-top: 18px; }
+  .btn {
+    border: none; cursor: pointer; padding: 11px 14px;
+    border-radius: var(--radius-sm);
+    font-family: inherit; font-size: 13px; font-weight: 600;
+    transition: all 0.15s; text-align: center;
+    letter-spacing: 0.2px;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--gold) 0%, #9d7a37 100%);
+    color: #2d1419;
+    box-shadow: 0 2px 8px rgba(184,146,78,0.3),
+                inset 0 1px 0 rgba(255,255,255,0.25);
+  }
+  .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(184,146,78,0.4),
+                inset 0 1px 0 rgba(255,255,255,0.25);
+  }
+  .btn-primary:disabled {
+    opacity: 0.6; cursor: wait; transform: none;
+  }
+  .btn-ghost {
+    background: transparent; color: var(--gold-soft);
+    border: 1px solid rgba(184,146,78,0.4);
+  }
+  .btn-ghost:hover {
+    background: rgba(184,146,78,0.1); color: #f7eed4;
+  }
+
+  /* Sidebar footer */
+  .preset-row {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px; margin-bottom: 12px;
+  }
+  .preset {
+    padding: 7px 0; font-size: 11px; text-align: center;
+    background: rgba(184,146,78,0.08); color: #d8cdb0;
+    border: 1px solid rgba(184,146,78,0.2);
+    border-radius: var(--radius-sm); cursor: pointer;
+    transition: all 0.15s;
+    font-weight: 500;
+  }
+  .preset:hover { background: rgba(184,146,78,0.18); color: #f7eed4; }
+
+  /* =================================================================
+     MAIN CONTENT
+     ================================================================= */
+  .main {
+    padding: 22px 26px 28px;
+    overflow-x: hidden;
+  }
+
+  /* Top stats strip */
+  .topbar {
+    background: var(--panel);
+    border-radius: var(--radius);
+    padding: 16px 22px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow);
+    display: grid;
+    grid-template-columns: 1.6fr repeat(4, 1fr);
+    gap: 18px;
+    align-items: center;
+    border: 1px solid var(--line-soft);
+  }
+  .topbar .progress-section { padding-right: 18px; border-right: 1px solid var(--line); }
+  .topbar .label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 1.4px;
+    color: var(--muted); font-weight: 600; margin-bottom: 4px;
+  }
+  .topbar .value {
+    font-family: var(--font-serif);
+    font-size: 24px; font-weight: 600; color: var(--burgundy);
+    line-height: 1.1;
+  }
+  .topbar .unit {
+    font-family: var(--font-sans);
+    font-size: 11px; color: var(--muted); margin-left: 4px;
+    font-weight: 400;
+  }
+  .progress-track {
+    height: 6px; background: var(--line-soft);
+    border-radius: 3px; overflow: hidden;
+    margin-top: 8px;
+  }
+  .progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--gold) 0%, var(--burgundy) 100%);
+    width: 0%; transition: width 0.4s ease;
+    border-radius: 3px;
+  }
+
+  /* Final summary card */
+  .summary {
+    background: linear-gradient(135deg, var(--burgundy) 0%, var(--burgundy-deep) 100%);
+    color: #fff; border-radius: var(--radius); padding: 22px 26px;
+    margin-bottom: 16px; display: none;
+    box-shadow: var(--shadow-lg);
+    position: relative; overflow: hidden;
+  }
+  .summary::before {
+    content: ""; position: absolute; top: -50%; right: -10%;
+    width: 300px; height: 300px;
+    background: radial-gradient(circle, rgba(184,146,78,0.18) 0%, transparent 60%);
+  }
+  .summary.visible { display: block; animation: fadein 0.4s; }
+  @keyframes fadein {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: none; }
+  }
+  .summary .badge {
+    display: inline-block; font-size: 10px; letter-spacing: 2px;
+    text-transform: uppercase; color: var(--gold-soft);
+    background: rgba(184,146,78,0.15); padding: 4px 10px;
+    border-radius: 100px; margin-bottom: 12px;
+    border: 1px solid rgba(184,146,78,0.3);
+  }
+  .summary h2 {
+    margin: 0 0 16px; font-family: var(--font-serif);
+    font-weight: 700; font-size: 22px; color: #fff;
+  }
+  .summary .nums { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+  .summary .num b {
+    display: block; font-family: var(--font-serif);
+    font-size: 30px; font-weight: 700; color: var(--gold-soft);
+    margin-bottom: 2px;
+  }
+  .summary .num span {
+    font-size: 10px; opacity: 0.85; letter-spacing: 1.4px;
+    text-transform: uppercase; font-weight: 600;
+  }
+
+  /* Grid layout */
+  .grid {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr 1.2fr;
+    gap: 16px;
+  }
+  @media (max-width: 1200px) {
+    .grid { grid-template-columns: 1fr 1fr; }
+    .grid .events-section { grid-column: 1 / -1; }
+  }
+
+  section { min-width: 0; }
+  .section-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin: 0 0 10px;
+  }
+  .section-head h2 {
+    margin: 0; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 1.6px; color: var(--ink-soft); font-weight: 700;
+  }
+  .section-head .meta {
+    font-size: 10.5px; color: var(--muted);
+    font-family: var(--font-mono);
+  }
+
+  /* Order board */
+  .board {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  }
+  .col {
+    background: var(--panel);
+    border-radius: var(--radius-sm);
+    padding: 10px 8px;
+    min-height: 280px;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--line-soft);
+  }
+  .col-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin: 0 4px 8px;
+  }
+  .col-head h3 {
+    margin: 0; font-size: 10px; color: var(--ink-soft);
+    text-transform: uppercase; letter-spacing: 1.4px; font-weight: 700;
+  }
+  .col-head .dot {
+    width: 7px; height: 7px; border-radius: 50%; display: inline-block;
+    margin-right: 6px; vertical-align: middle;
+  }
+  .col-head .count {
+    font-size: 10px; color: var(--muted);
+    background: var(--bg-warm); padding: 2px 8px; border-radius: 100px;
+    font-weight: 600;
+  }
+  .dot.waiting { background: var(--waiting); }
+  .dot.cooking { background: var(--cooking); animation: pulse 1.4s ease-in-out infinite; }
+  .dot.ready   { background: var(--ready); }
+  @keyframes pulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(217,138,43,0.5); }
+    50%     { box-shadow: 0 0 0 6px rgba(217,138,43,0); }
+  }
+
+  .ticket {
+    background: var(--panel-2);
+    border-left: 3px solid var(--waiting);
+    padding: 8px 10px; margin-bottom: 6px;
+    border-radius: 4px;
+    transition: all 0.2s;
+  }
+  /* Only tickets that just appeared (or changed column) animate; the board
+     is redrawn every 700 ms, so animating every ticket made them flicker. */
+  .ticket.new { animation: slidein 0.25s ease-out; }
+  @keyframes slidein {
+    from { opacity: 0; transform: translateY(-3px); }
+    to   { opacity: 1; transform: none; }
+  }
+  .ticket:hover { transform: translateX(2px); box-shadow: var(--shadow); }
+  .ticket.cooking { border-color: var(--cooking); }
+  .ticket.ready   { border-color: var(--ready); background: #f3f7ee; }
+  .ticket .top {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 4px;
+  }
+  .ticket .id {
+    font-weight: 700; font-size: 12px; color: var(--ink);
+  }
+  .ticket .table {
+    font-size: 10px; color: var(--muted); margin-left: 6px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .ticket .waiter {
+    font-size: 10px; color: var(--muted); font-style: italic;
+  }
+  .ticket .items {
+    display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;
+  }
+  .item {
+    font-size: 11px; padding: 2px 7px; border-radius: 100px;
+    background: var(--bg-warm); color: var(--ink-soft);
+    display: inline-flex; align-items: center; gap: 4px;
+    border: 1px solid transparent;
+  }
+  .item::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--waiting); flex-shrink: 0;
+  }
+  .item.cooking { background: #fdf3e3; color: #8a5519; border-color: #f1d8a8; }
+  .item.cooking::before { background: var(--cooking); animation: pulse 1.4s ease-in-out infinite; }
+  .item.ready   { background: #ecf3e1; color: #3e6029; border-color: #cdd9b6; }
+  .item.ready::before { background: var(--ready); }
+  .empty {
+    color: #bcb5a3; font-size: 11px; font-style: italic;
+    text-align: center; padding: 30px 8px;
+  }
+
+  /* Chefs */
+  .chefs {
+    display: grid; gap: 8px;
+  }
+  .chef {
+    background: var(--panel); padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow);
+    border-left: 3px solid var(--line);
+    border-top: 1px solid var(--line-soft);
+    border-right: 1px solid var(--line-soft);
+    border-bottom: 1px solid var(--line-soft);
+    transition: all 0.2s;
+  }
+  .chef:hover { transform: translateX(2px); }
+  .chef.grill   { border-left-color: var(--grill); }
+  .chef.pasta   { border-left-color: var(--pasta); }
+  .chef.dessert { border-left-color: var(--dessert); }
+  .chef .head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 2px;
+  }
+  .chef .name { font-weight: 600; font-size: 12.5px; }
+  .chef .station-tag {
+    font-size: 9px; text-transform: uppercase; letter-spacing: 1px;
+    padding: 1px 6px; border-radius: 100px;
+    font-weight: 600;
+  }
+  .chef.grill .station-tag   { background: #f9dfd6; color: #8b3a24; }
+  .chef.pasta .station-tag   { background: #f6e9c2; color: #7a6014; }
+  .chef.dessert .station-tag { background: #ebe0f4; color: #5b3f7b; }
+  .chef .doing {
+    font-size: 11px; color: var(--ink-soft); margin-top: 4px;
+    font-style: italic;
+  }
+  .chef.idle .doing { color: var(--muted); }
+  .chef.idle .name::after {
+    content: " · idle"; font-weight: 400; color: var(--muted);
+    font-size: 10.5px; font-style: italic;
+  }
+
+  /* Queue depth bars */
+  .queue-block {
+    background: var(--panel); padding: 12px 14px;
+    border-radius: var(--radius-sm); box-shadow: var(--shadow);
+    margin-bottom: 10px;
+    border: 1px solid var(--line-soft);
+  }
+  .qrow {
+    display: grid; grid-template-columns: 70px 1fr 30px;
+    align-items: center; gap: 10px; margin: 6px 0;
+  }
+  .qrow .qname {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--ink-soft); font-weight: 600;
+  }
+  .qbar {
+    height: 8px; background: var(--line-soft);
+    border-radius: 4px; overflow: hidden;
+  }
+  .qbar > div {
+    height: 100%; transition: width 0.4s, background 0.2s;
+    border-radius: 4px;
+  }
+  .qbar.grill   > div { background: var(--grill); }
+  .qbar.pasta   > div { background: var(--pasta); }
+  .qbar.dessert > div { background: var(--dessert); }
+  .qval {
+    font-family: var(--font-mono);
+    font-size: 11px; color: var(--muted); text-align: right;
+    font-weight: 600;
+  }
+
+  /* Event log */
+  .events {
+    background: #1a1410; color: #e0d6c0;
+    padding: 12px 14px;
+    border-radius: var(--radius-sm);
+    height: 520px; overflow-y: auto;
+    font-family: var(--font-mono);
+    font-size: 11px; line-height: 1.55;
+    box-shadow: var(--shadow);
+    border: 1px solid #0c0807;
+  }
+  .events::-webkit-scrollbar { width: 6px; }
+  .events::-webkit-scrollbar-thumb {
+    background: rgba(184,146,78,0.3); border-radius: 3px;
+  }
+  .events .row {
+    display: grid;
+    grid-template-columns: 46px 80px 1fr;
+    gap: 8px; padding: 1px 0;
+  }
+  .events .t   { color: #6b6253; text-align: right; }
+  .events .k   {
+    text-transform: uppercase; font-size: 10px; letter-spacing: 0.6px;
+    font-weight: 700;
+  }
+  .events .m   { color: #d4cab2; word-break: break-word; }
+  .k.ORDER     { color: #e6a23c; }
+  .k.QUEUE     { color: #93b4d6; }
+  .k.WAIT_STOVE,
+  .k.GOT_STOVE,
+  .k.FREE_STOVE{ color: #b07ec8; }
+  .k.COOK      { color: #e6a23c; }
+  .k.ITEM_DONE { color: #67c23a; }
+  .k.READY     { color: #67c23a; }
+  .k.SERVED    { color: #67c23a; font-weight: 700; }
+  .k.WAITER_OFF,
+  .k.CHEF_ON,
+  .k.CHEF_OFF  { color: #8a7d65; }
+  .k.DONE,
+  .k.INIT      { color: var(--gold-soft); }
+
+  /* Concept callout blocks */
+  .explainer {
+    background: var(--panel);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    box-shadow: var(--shadow);
+    font-size: 12px; color: var(--ink-soft); line-height: 1.55;
+    margin-top: 12px;
+    border: 1px solid var(--line-soft);
+    border-left: 3px solid var(--gold);
+  }
+  .explainer h4 {
+    margin: 0 0 4px;
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: 1.4px;
+    color: var(--burgundy); font-weight: 700;
+  }
+  .explainer code {
+    font-family: var(--font-mono);
+    background: var(--bg-warm); padding: 1px 5px; border-radius: 3px;
+    font-size: 11px; color: var(--burgundy);
+  }
+  .explainer b { color: var(--burgundy); font-weight: 700; }
+
+  /* Toast notification */
+  .toast {
+    position: fixed; bottom: 20px; right: 20px;
+    background: var(--burgundy-deep); color: #fff;
+    padding: 12px 18px; border-radius: var(--radius-sm);
+    font-size: 13px; font-weight: 500;
+    box-shadow: var(--shadow-lg);
+    opacity: 0; transform: translateY(10px);
+    transition: all 0.25s;
+    pointer-events: none; z-index: 100;
+    border-left: 3px solid var(--gold);
+  }
+  .toast.show { opacity: 1; transform: none; }
+  /* Phones and small tablets: sidebar on top, panels stacked */
+  @media (max-width: 860px) {
+    .app { grid-template-columns: 1fr; }
+    .sidebar { position: static; height: auto; }
+    .main { padding: 16px; }
+    .grid { grid-template-columns: 1fr; }
+    .topbar { grid-template-columns: 1fr 1fr; }
+    .summary .nums { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ============================================================
+       SIDEBAR — configuration controls
+       ============================================================ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">V</div>
+      <div>
+        <div class="title">Viola's Cuisine</div>
+        <div class="subtitle">Concurrency Lab</div>
+      </div>
+    </div>
+
+    <!-- Quick presets -->
+    <div class="panel-label">Presets</div>
+    <div class="preset-row">
+      <div class="preset" data-preset="small">Small</div>
+      <div class="preset" data-preset="medium">Medium</div>
+      <div class="preset" data-preset="rush">Rush</div>
+    </div>
+
+    <!-- Staff -->
+    <div class="panel-label">Staff</div>
+
+    <div class="control">
+      <div class="row"><label>Waiters</label><span class="val" id="v-waiters">2</span></div>
+      <input type="range" id="num_waiters" min="1" max="5" step="1" value="2">
+      <div class="hint">Producer threads. More waiters → orders pile up faster.</div>
+    </div>
+
+    <div class="control">
+      <div class="row"><label>Grill chefs</label><span class="val" id="v-grill">2</span></div>
+      <input type="range" id="grill_chefs" min="1" max="5" step="1" value="2">
+    </div>
+
+    <div class="control">
+      <div class="row"><label>Pasta chefs</label><span class="val" id="v-pasta">2</span></div>
+      <input type="range" id="pasta_chefs" min="1" max="5" step="1" value="2">
+    </div>
+
+    <div class="control">
+      <div class="row"><label>Dessert chefs</label><span class="val" id="v-dessert">1</span></div>
+      <input type="range" id="dessert_chefs" min="1" max="4" step="1" value="1">
+    </div>
+
+    <!-- Resources -->
+    <div class="panel-label">Resources</div>
+
+    <div class="control">
+      <div class="row"><label>Stoves (semaphore)</label><span class="val" id="v-stoves">2</span></div>
+      <input type="range" id="num_stoves" min="1" max="6" step="1" value="2">
+      <div class="hint">Shared by Grill + Pasta chefs. The classic <code style="font-family:'JetBrains Mono',monospace">Semaphore</code>.</div>
+    </div>
+
+    <div class="control">
+      <div class="row"><label>Queue capacity</label><span class="val" id="v-qcap">10</span></div>
+      <input type="range" id="queue_capacity" min="2" max="20" step="1" value="10">
+      <div class="hint">Max items per station queue before back-pressure.</div>
+    </div>
+
+    <!-- Workload -->
+    <div class="panel-label">Workload</div>
+
+    <div class="control">
+      <div class="row"><label>Total orders</label><span class="val" id="v-orders">12</span></div>
+      <input type="range" id="max_orders" min="4" max="40" step="2" value="12">
+    </div>
+
+    <div class="control">
+      <div class="row"><label>Waiter think time max</label><span class="val" id="v-think">2.0 s</span></div>
+      <input type="range" id="think_time_max" min="0.5" max="4" step="0.1" value="2.0">
+      <div class="hint">Gap between consecutive orders from one waiter.</div>
+    </div>
+
+    <div class="control">
+      <div class="row"><label>Delivery time</label><span class="val" id="v-serve">1.5 s</span></div>
+      <input type="range" id="serve_time" min="0.2" max="3" step="0.1" value="1.5">
+    </div>
+
+    <!-- Random service times toggle -->
+    <div class="panel-label">Service-time model</div>
+    <div class="toggle" id="toggle-random">
+      <div class="text">
+        Random cook times
+        <small>Exponential distribution (M/M/c queueing model)</small>
+      </div>
+      <div class="switch"></div>
+    </div>
+
+    <!-- Apply / view benchmark -->
+    <div class="actions">
+      <button id="apply" class="btn btn-primary">↻ Apply &amp; Restart</button>
+      <a href="/benchmark" class="btn btn-ghost" style="text-decoration:none">View speedup →</a>
+    </div>
+  </aside>
+
+  <!-- ============================================================
+       MAIN
+       ============================================================ -->
+  <main class="main">
+
+    <!-- Top stats strip -->
+    <div class="topbar">
+      <div class="progress-section">
+        <div class="label">Progress</div>
+        <div class="value"><span id="prog">0</span><span class="unit">/ <span id="prog-max">0</span> orders</span></div>
+        <div class="progress-track"><div class="progress-bar" id="bar"></div></div>
+      </div>
+      <div>
+        <div class="label">Elapsed</div>
+        <div class="value"><span id="elapsed">0</span><span class="unit">s</span></div>
+      </div>
+      <div>
+        <div class="label">Avg wait</div>
+        <div class="value"><span id="avg">0</span><span class="unit">s</span></div>
+      </div>
+      <div>
+        <div class="label">Throughput</div>
+        <div class="value"><span id="thru">0</span><span class="unit">/min</span></div>
+      </div>
+      <div>
+        <div class="label">Stoves free</div>
+        <div class="value"><span id="stoves">—</span></div>
+      </div>
+    </div>
+
+    <!-- Completion summary -->
+    <div id="summary" class="summary">
+      <span class="badge">Simulation complete</span>
+      <h2>Service is finished.</h2>
+      <div class="nums">
+        <div class="num"><b id="s-served">0</b><span>Orders served</span></div>
+        <div class="num"><b id="s-elapsed">0 s</b><span>Total time</span></div>
+        <div class="num"><b id="s-thru">0</b><span>Per minute</span></div>
+        <div class="num"><b id="s-avg">0 s</b><span>Avg wait</span></div>
+      </div>
+    </div>
+
+    <!-- 3-column work area -->
+    <div class="grid">
+
+      <!-- Order Board -->
+      <section>
+        <div class="section-head">
+          <h2>Order Board</h2>
+          <span class="meta">producer → consumer pipeline</span>
+        </div>
+        <div class="board">
+          <div class="col">
+            <div class="col-head">
+              <h3><span class="dot waiting"></span>Waiting</h3>
+              <span class="count" id="c-waiting">0</span>
+            </div>
+            <div id="col-waiting"></div>
+          </div>
+          <div class="col">
+            <div class="col-head">
+              <h3><span class="dot cooking"></span>Cooking</h3>
+              <span class="count" id="c-cooking">0</span>
+            </div>
+            <div id="col-cooking"></div>
+          </div>
+          <div class="col">
+            <div class="col-head">
+              <h3><span class="dot ready"></span>Ready</h3>
+              <span class="count" id="c-ready">0</span>
+            </div>
+            <div id="col-ready"></div>
+          </div>
+        </div>
+
+        <div class="queue-block">
+          <div class="section-head" style="margin-bottom:6px">
+            <h2 style="font-size:10px">Station Queue Depth</h2>
+            <span class="meta">live</span>
+          </div>
+          <div class="qrow"><span class="qname">Grill</span><div class="qbar grill"><div id="qb-grill"></div></div><span class="qval" id="qv-grill">0</span></div>
+          <div class="qrow"><span class="qname">Pasta</span><div class="qbar pasta"><div id="qb-pasta"></div></div><span class="qval" id="qv-pasta">0</span></div>
+          <div class="qrow"><span class="qname">Dessert</span><div class="qbar dessert"><div id="qb-dessert"></div></div><span class="qval" id="qv-dessert">0</span></div>
+        </div>
+
+        <div class="explainer">
+          <h4>What the columns mean</h4>
+          Tickets flow <b>left → right</b>. Each waiter thread <code>put()</code>s items into station queues; chef threads <code>get()</code> them — this is the textbook
+          <b>producer–consumer</b> pattern. Items only enter <b>Cooking</b> once a chef acquires the resources they need.
+        </div>
+      </section>
+
+      <!-- Chefs -->
+      <section>
+        <div class="section-head">
+          <h2>Kitchen Staff</h2>
+          <span class="meta">one thread each</span>
+        </div>
+        <div id="chefs" class="chefs"></div>
+        <div class="explainer">
+          <h4>Why some chefs wait</h4>
+          <b>Grill</b> and <b>Pasta</b> chefs must <code>acquire()</code> a stove before they can cook — there are fewer stoves than chefs, so they compete.
+          That's a <code>threading.Semaphore</code>. <b>Dessert</b> chefs don't need a stove and never wait.
+        </div>
+      </section>
+
+      <!-- Event log -->
+      <section class="events-section">
+        <div class="section-head">
+          <h2>Event Log</h2>
+          <span class="meta">newest first</span>
+        </div>
+        <div id="events" class="events">connecting…</div>
+        <div class="explainer">
+          <h4>How to read it</h4>
+          Every line is one synchronization event from a worker thread:
+          <code>ORDER</code> (waiter submits), <code>WAIT_STOVE</code> / <code>GOT_STOVE</code> (semaphore),
+          <code>COOK</code> → <code>ITEM_DONE</code>, then <code>READY</code> → <code>SERVED</code> (condition variable wakes delivery).
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+  /* =================================================================
+     CONFIGURATION FORM
+     ================================================================= */
+  const FIELDS = [
+    "num_waiters", "grill_chefs", "pasta_chefs", "dessert_chefs",
+    "num_stoves", "queue_capacity", "max_orders",
+    "think_time_max", "serve_time",
+  ];
+
+  const VALUE_LABELS = {
+    num_waiters:    v => `${v}`,
+    grill_chefs:    v => `${v}`,
+    pasta_chefs:    v => `${v}`,
+    dessert_chefs:  v => `${v}`,
+    num_stoves:     v => `${v}`,
+    queue_capacity: v => `${v}`,
+    max_orders:     v => `${v}`,
+    think_time_max: v => `${Number(v).toFixed(1)} s`,
+    serve_time:     v => `${Number(v).toFixed(1)} s`,
+  };
+  const LABEL_IDS = {
+    num_waiters: "v-waiters", grill_chefs: "v-grill",
+    pasta_chefs: "v-pasta",   dessert_chefs: "v-dessert",
+    num_stoves: "v-stoves",   queue_capacity: "v-qcap",
+    max_orders: "v-orders",   think_time_max: "v-think",
+    serve_time: "v-serve",
+  };
+
+  function syncLabels() {
+    for (const f of FIELDS) {
+      const el = document.getElementById(f);
+      if (!el) continue;
+      document.getElementById(LABEL_IDS[f]).textContent =
+        VALUE_LABELS[f](el.value);
+    }
+  }
+
+  FIELDS.forEach(f => {
+    const el = document.getElementById(f);
+    if (el) el.addEventListener("input", syncLabels);
+  });
+  syncLabels();
+
+  // Random-time toggle
+  const toggle = document.getElementById("toggle-random");
+  toggle.addEventListener("click", () => toggle.classList.toggle("on"));
+
+  // Presets
+  const PRESETS = {
+    small:  { num_waiters:1, grill_chefs:1, pasta_chefs:1, dessert_chefs:1,
+              num_stoves:1, queue_capacity:6,  max_orders:8,  think_time_max:1.5, serve_time:1.0 },
+    medium: { num_waiters:2, grill_chefs:2, pasta_chefs:2, dessert_chefs:1,
+              num_stoves:2, queue_capacity:10, max_orders:12, think_time_max:2.0, serve_time:1.5 },
+    rush:   { num_waiters:4, grill_chefs:3, pasta_chefs:3, dessert_chefs:2,
+              num_stoves:2, queue_capacity:14, max_orders:24, think_time_max:1.0, serve_time:0.8 },
+  };
+  document.querySelectorAll(".preset").forEach(p => {
+    p.addEventListener("click", () => {
+      const cfg = PRESETS[p.dataset.preset];
+      for (const k in cfg) {
+        const el = document.getElementById(k);
+        if (el) el.value = cfg[k];
+      }
+      syncLabels();
+    });
+  });
+
+  // Load current backend config on startup so sliders reflect reality.
+  (async function loadConfig() {
+    try {
+      const r = await fetch("/api/config");
+      const c = await r.json();
+      for (const f of FIELDS) {
+        if (f in c && document.getElementById(f)) {
+          document.getElementById(f).value = c[f];
+        }
+      }
+      if (c.random_times) toggle.classList.add("on");
+      syncLabels();
+    } catch (e) { console.warn("config load failed", e); }
+  })();
+
+  /* =================================================================
+     APPLY / RESTART
+     ================================================================= */
+  function showToast(msg) {
+    const t = document.getElementById("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    setTimeout(() => t.classList.remove("show"), 2200);
+  }
+
+  document.getElementById("apply").addEventListener("click", async () => {
+    const btn = document.getElementById("apply");
+    const cfg = { random_times: toggle.classList.contains("on") };
+    for (const f of FIELDS) {
+      const el = document.getElementById(f);
+      if (el) cfg[f] = el.value;
+    }
+    btn.disabled = true; btn.textContent = "Restarting…";
+    try {
+      await fetch("/api/restart", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cfg),
+      });
+      showToast("Simulation restarted with new settings");
+    } catch (e) { console.error(e); showToast("Restart failed — see console"); }
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.textContent = "↻ Apply & Restart";
+      refresh();
+    }, 400);
+  });
+
+  /* =================================================================
+     DASHBOARD RENDERING
+     ================================================================= */
+  function esc(s) {
+    return String(s).replace(/[<>&]/g,
+      c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+  }
+
+  const shownTickets = new Set();   // "orderId:status" already drawn once
+
+  function renderTicket(o) {
+    const key = o.order_id + ":" + o.status;
+    const isNew = !shownTickets.has(key);
+    shownTickets.add(key);
+    const items = o.items.map(i =>
+      `<span class="item ${i.status}">${esc(i.name)}</span>`
+    ).join("");
+    return `
+      <div class="ticket ${o.status}${isNew ? " new" : ""}">
+        <div class="top">
+          <div>
+            <span class="id">#${o.order_id}</span>
+            <span class="table">Table ${o.table}</span>
+          </div>
+          <span class="waiter">${esc(o.waiter)}</span>
+        </div>
+        <div class="items">${items}</div>
+      </div>`;
+  }
+
+  function renderEvent(e) {
+    return `<div class="row">
+      <span class="t">${e.t.toFixed(2)}s</span>
+      <span class="k ${e.kind}">${e.kind}</span>
+      <span class="m">${esc(e.msg)}</span>
+    </div>`;
+  }
+
+  function setText(id, txt) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = txt;
+  }
+
+  async function refresh() {
+    let s;
+    try {
+      const r = await fetch("/api/state");
+      s = await r.json();
+    } catch (err) { console.error(err); return; }
+
+    // ---- Topbar
+    const served = s.stats.served_orders;
+    const total  = s.stats.max_orders;
+    setText("prog", served);
+    setText("prog-max", total);
+    document.getElementById("bar").style.width =
+      `${(served / total * 100).toFixed(0)}%`;
+    setText("elapsed", s.stats.elapsed);
+    setText("avg",     s.stats.avg_wait_time);
+    setText("thru",    s.stats.throughput);
+
+    // Stoves free is derived: total stoves − number of chefs currently cooking
+    // on grill/pasta (those that need a stove).
+    const cooks = Object.values(s.chefs || {});
+    const usedStoves = cooks.filter(c =>
+      (c.station === "grill" || c.station === "pasta") &&
+      typeof c.doing === "string" && c.doing.startsWith("cooking")
+    ).length;
+    const freeStoves = Math.max(0, (s.stats.num_stoves || 0) - usedStoves);
+    setText("stoves", `${freeStoves}/${s.stats.num_stoves || 0}`);
+
+    // ---- Final summary
+    const summary = document.getElementById("summary");
+    if (s.stats.done) {
+      summary.classList.add("visible");
+      setText("s-served",  served);
+      setText("s-elapsed", s.stats.elapsed + " s");
+      setText("s-thru",    s.stats.throughput);
+      setText("s-avg",     s.stats.avg_wait_time + " s");
+    } else {
+      summary.classList.remove("visible");
+    }
+
+    // ---- Order board
+    const buckets = { waiting: [], cooking: [], ready: [] };
+    for (const o of s.active) {
+      (buckets[o.status] || (buckets[o.status] = [])).push(o);
+    }
+    for (const c of ["waiting", "cooking", "ready"]) {
+      const list = buckets[c] || [];
+      const html = list.map(renderTicket).join("");
+      document.getElementById("col-" + c).innerHTML = html ||
+        `<div class="empty">— none —</div>`;
+      setText("c-" + c, list.length);
+    }
+
+    // ---- Queue depth bars
+    const qd  = s.stats.queue_depths || {};
+    const cap = s.stats.queue_capacity || 10;
+    for (const k of ["grill", "pasta", "dessert"]) {
+      const n = qd[k] || 0;
+      const bar = document.getElementById("qb-" + k);
+      if (bar) bar.style.width = `${Math.min(100, (n / cap) * 100)}%`;
+      setText("qv-" + k, n);
+    }
+
+    // ---- Chefs
+    const chefs = Object.entries(s.chefs || {});
+    document.getElementById("chefs").innerHTML = chefs.length
+      ? chefs.map(([name, info]) => {
+          const idleCls = info.doing === "idle" ? " idle" : "";
+          const doing   = info.doing === "idle" ? "ready for the next ticket" : info.doing;
+          return `<div class="chef ${info.station}${idleCls}">
+             <div class="head">
+               <span class="name">${esc(name)}</span>
+               <span class="station-tag">${info.station}</span>
+             </div>
+             <div class="doing">${esc(doing)}</div>
+           </div>`;
+        }).join("")
+      : `<div class="empty">waiting for the brigade…</div>`;
+
+    // ---- Event log
+    document.getElementById("events").innerHTML =
+      (s.events || []).map(renderEvent).join("") || "no events yet";
+  }
+
+  refresh();
+  setInterval(refresh, 700);
+</script>
+</body>
+</html>

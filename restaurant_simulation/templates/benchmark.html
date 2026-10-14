@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Viola's Cuisine — Speedup</title>
+<style>
+  /* System-font stacks (no network calls, no render-blocking) */
+  :root {
+    --font-serif: Georgia, "Iowan Old Style", "Palatino Linotype",
+                  "Book Antiqua", Palatino, serif;
+    --font-sans:  -apple-system, BlinkMacSystemFont, "Segoe UI",
+                  system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono:  ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas,
+                  "Liberation Mono", monospace;
+  }
+  :root {
+    --bg:        #f3efe6;
+    --bg-warm:   #ebe5d6;
+    --panel:     #ffffff;
+    --panel-2:   #fbf8f1;
+    --ink:       #1f1a16;
+    --ink-soft:  #4b4339;
+    --muted:     #8b8275;
+    --line:      #e3dcc9;
+    --line-soft: #efeadb;
+
+    --burgundy:  #5C1A2B;
+    --burgundy-deep: #3d0f1c;
+    --gold:      #b8924e;
+    --gold-soft: #d9b97a;
+
+    --radius:    10px;
+    --radius-sm: 6px;
+    --shadow:    0 1px 2px rgba(40,28,18,0.06),
+                 0 4px 14px rgba(40,28,18,0.05);
+    --shadow-lg: 0 4px 24px rgba(40,28,18,0.12);
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: var(--font-sans);
+    margin: 0;
+    background:
+      radial-gradient(1200px 600px at -10% -20%, #ece4d0 0%, transparent 60%),
+      radial-gradient(900px 600px at 110% 110%, #e7dec6 0%, transparent 60%),
+      var(--bg);
+    color: var(--ink);
+    font-size: 13.5px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .app { display: grid; grid-template-columns: 320px 1fr; min-height: 100vh; }
+
+  /* ---- Sidebar (same look as dashboard) ---- */
+  .sidebar {
+    background: linear-gradient(180deg, #2d1419 0%, #1c0b10 100%);
+    color: #efe6d2;
+    padding: 22px 22px 28px;
+    position: sticky; top: 0;
+    height: 100vh; overflow-y: auto;
+    border-right: 1px solid #1a0a0e;
+    box-shadow: 4px 0 20px rgba(0,0,0,0.12);
+  }
+  .sidebar::-webkit-scrollbar { width: 6px; }
+  .sidebar::-webkit-scrollbar-thumb {
+    background: rgba(184,146,78,0.35); border-radius: 3px;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 12px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid rgba(184,146,78,0.25);
+    margin-bottom: 18px;
+  }
+  .brand .logo {
+    width: 42px; height: 42px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--gold) 0%, #8d6c34 100%);
+    display: grid; place-items: center;
+    color: #2d1419; font-weight: 700; font-family: var(--font-serif);
+    font-size: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.2);
+  }
+  .brand .title {
+    font-family: var(--font-serif);
+    font-size: 17px; font-weight: 700;
+    color: #f7eed4;
+  }
+  .brand .subtitle {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 2px;
+    color: var(--gold-soft); margin-top: 2px;
+  }
+  .panel-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 1.8px;
+    color: var(--gold); font-weight: 600;
+    margin: 18px 0 10px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .panel-label::after {
+    content: ""; flex: 1; height: 1px;
+    background: linear-gradient(to right, rgba(184,146,78,0.4), transparent);
+  }
+  .control { margin-bottom: 14px; }
+  .control .row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 4px;
+  }
+  .control label { font-size: 12px; color: #d8cdb0; font-weight: 500; }
+  .control .val {
+    font-family: var(--font-mono);
+    font-size: 12px; color: var(--gold-soft); font-weight: 600;
+  }
+  .control input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 4px; border-radius: 2px;
+    background: rgba(184,146,78,0.2); outline: none;
+    margin: 6px 0 0;
+  }
+  .control input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--gold); cursor: pointer;
+    border: 2px solid #2d1419;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  }
+  .control input[type=range]::-moz-range-thumb {
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--gold); cursor: pointer; border: 2px solid #2d1419;
+  }
+  .control .hint {
+    font-size: 10.5px; color: #998b6a; margin-top: 3px; line-height: 1.4;
+  }
+  .actions { display: grid; gap: 8px; margin-top: 18px; }
+  .btn {
+    border: none; cursor: pointer; padding: 11px 14px;
+    border-radius: var(--radius-sm);
+    font-family: inherit; font-size: 13px; font-weight: 600;
+    transition: all 0.15s; text-align: center;
+    letter-spacing: 0.2px;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--gold) 0%, #9d7a37 100%);
+    color: #2d1419;
+    box-shadow: 0 2px 8px rgba(184,146,78,0.3),
+                inset 0 1px 0 rgba(255,255,255,0.25);
+  }
+  .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(184,146,78,0.4),
+                inset 0 1px 0 rgba(255,255,255,0.25);
+  }
+  .btn-primary:disabled { opacity: 0.6; cursor: wait; transform: none; }
+  .btn-ghost {
+    background: transparent; color: var(--gold-soft);
+    border: 1px solid rgba(184,146,78,0.4);
+  }
+  .btn-ghost:hover {
+    background: rgba(184,146,78,0.1); color: #f7eed4;
+  }
+
+  /* ---- Main ---- */
+  .main { padding: 28px 32px; max-width: 1100px; }
+
+  .page-header {
+    font-family: var(--font-serif);
+    font-size: 32px; font-weight: 700; color: var(--burgundy);
+    margin: 0 0 6px;
+  }
+  .page-sub { color: var(--muted); font-size: 13px; margin-bottom: 22px; }
+
+  .intro {
+    background: var(--panel); border-radius: var(--radius);
+    padding: 22px 26px; box-shadow: var(--shadow);
+    margin-bottom: 18px;
+    border: 1px solid var(--line-soft);
+    border-left: 3px solid var(--gold);
+    font-size: 13.5px; line-height: 1.6; color: var(--ink-soft);
+  }
+  .intro h2 {
+    font-family: var(--font-serif); font-size: 18px;
+    color: var(--burgundy); margin: 0 0 8px;
+  }
+  .intro code {
+    background: var(--bg-warm); padding: 1px 6px; border-radius: 3px;
+    font-family: var(--font-mono); font-size: 12px;
+    color: var(--burgundy);
+  }
+  .intro b { color: var(--burgundy); font-weight: 700; }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .card {
+    background: var(--panel); border-radius: var(--radius);
+    padding: 22px 26px;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--line-soft);
+    position: relative; overflow: hidden;
+  }
+  .card.par::before, .card.seq::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0;
+    width: 3px;
+  }
+  .card.par::before { background: var(--burgundy); }
+  .card.seq::before { background: var(--muted); }
+
+  .card .label {
+    font-size: 10px; color: var(--muted); font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.6px; margin-bottom: 8px;
+  }
+  .card .big {
+    font-family: var(--font-serif); font-weight: 700;
+    font-size: 48px; color: var(--burgundy); line-height: 1;
+  }
+  .card.seq .big { color: var(--ink); }
+  .card .unit { font-family: var(--font-sans);
+                font-size: 14px; color: var(--muted); margin-left: 4px;
+                font-weight: 400; }
+  .card .note {
+    font-size: 12px; color: var(--muted); margin-top: 10px; line-height: 1.55;
+  }
+
+  .speedup {
+    background: linear-gradient(135deg, var(--burgundy) 0%, var(--burgundy-deep) 100%);
+    color: #fff;
+    padding: 32px;
+    border-radius: var(--radius);
+    margin-top: 18px;
+    text-align: center;
+    box-shadow: var(--shadow-lg);
+    display: none;
+    position: relative; overflow: hidden;
+  }
+  .speedup::before {
+    content: ""; position: absolute; top: -50%; right: -10%;
+    width: 360px; height: 360px;
+    background: radial-gradient(circle, rgba(184,146,78,0.18) 0%, transparent 60%);
+  }
+  .speedup.visible { display: block; animation: fadein 0.4s; }
+  @keyframes fadein {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: none; }
+  }
+  .speedup .badge {
+    display: inline-block; font-size: 10px; letter-spacing: 2px;
+    text-transform: uppercase; color: var(--gold-soft);
+    background: rgba(184,146,78,0.18); padding: 5px 12px;
+    border-radius: 100px; margin-bottom: 14px;
+    border: 1px solid rgba(184,146,78,0.3);
+  }
+  .speedup .big {
+    font-family: var(--font-serif);
+    font-size: 68px; font-weight: 700;
+    color: var(--gold-soft);
+  }
+  .speedup .note { font-size: 13px; opacity: 0.9; margin-top: 8px; }
+
+  /* Speedup comparison bars */
+  .compare {
+    background: rgba(0,0,0,0.18); border-radius: 8px;
+    padding: 18px 22px; margin-top: 18px;
+    text-align: left;
+    border: 1px solid rgba(184,146,78,0.15);
+  }
+  .compare .row {
+    display: grid; grid-template-columns: 100px 1fr 70px;
+    gap: 12px; align-items: center; margin: 6px 0;
+  }
+  .compare .row .name {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px;
+    color: var(--gold-soft); font-weight: 600;
+  }
+  .compare .row .track {
+    height: 10px; background: rgba(0,0,0,0.25);
+    border-radius: 5px; overflow: hidden;
+  }
+  .compare .row .fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--gold) 0%, var(--gold-soft) 100%);
+    width: 0%; transition: width 0.6s;
+  }
+  .compare .row.seq .fill {
+    background: linear-gradient(90deg, #99847a 0%, #c9b7a6 100%);
+  }
+  .compare .row .val {
+    font-family: var(--font-mono);
+    text-align: right; color: #fff; font-weight: 600; font-size: 13px;
+  }
+
+  .status { font-size: 13px; color: var(--muted); margin-top: 12px; }
+  .status.run { color: var(--burgundy); font-weight: 600; }
+  .spinner {
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid #d8cdb0; border-top-color: var(--burgundy);
+    border-radius: 50%; vertical-align: middle; margin-right: 8px;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .config-summary {
+    display: flex; flex-wrap: wrap; gap: 10px;
+    margin-top: 14px;
+  }
+  .chip {
+    background: var(--bg-warm); color: var(--ink-soft);
+    padding: 5px 10px; border-radius: 100px;
+    font-size: 11px; font-weight: 600;
+    border: 1px solid var(--line);
+  }
+  .chip b { color: var(--burgundy); font-weight: 700; }
+  @media (max-width: 860px) {
+    .app { grid-template-columns: 1fr; }
+    .sidebar { position: static; height: auto; }
+    .main { padding: 16px; }
+    .grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Sidebar — same look, sliders feed the benchmark -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">V</div>
+      <div>
+        <div class="title">Viola's Cuisine</div>
+        <div class="subtitle">Speedup Lab</div>
+      </div>
+    </div>
+
+    <div class="panel-label">Test workload</div>
+
+    <div class="control">
+      <div class="row"><label>Number of orders</label><span class="val" id="v-orders">8</span></div>
+      <input type="range" id="num_orders" min="4" max="40" step="2" value="8">
+      <div class="hint">How many orders both runs will process.</div>
+    </div>
+
+    <div class="panel-label">Parallel brigade</div>
+
+    <div class="control">
+      <div class="row"><label>Grill chefs</label><span class="val" id="v-grill">2</span></div>
+      <input type="range" id="grill_chefs" min="1" max="5" step="1" value="2">
+    </div>
+    <div class="control">
+      <div class="row"><label>Pasta chefs</label><span class="val" id="v-pasta">2</span></div>
+      <input type="range" id="pasta_chefs" min="1" max="5" step="1" value="2">
+    </div>
+    <div class="control">
+      <div class="row"><label>Dessert chefs</label><span class="val" id="v-dessert">1</span></div>
+      <input type="range" id="dessert_chefs" min="1" max="4" step="1" value="1">
+    </div>
+    <div class="control">
+      <div class="row"><label>Stoves (semaphore)</label><span class="val" id="v-stoves">2</span></div>
+      <input type="range" id="num_stoves" min="1" max="6" step="1" value="2">
+      <div class="hint">Shared by Grill + Pasta chefs.</div>
+    </div>
+
+    <div class="actions">
+      <button id="run" class="btn btn-primary">▶ Run benchmark</button>
+      <a href="/" class="btn btn-ghost" style="text-decoration:none">← Live dashboard</a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <h1 class="page-header">Sequential vs. Parallel</h1>
+    <p class="page-sub">Run the same workload twice — once with one worker, once with the brigade you configured in the sidebar.</p>
+
+    <div class="intro">
+      <h2>What this measures</h2>
+      The same set of orders is processed twice — once <b>sequentially</b>
+      (one worker, no threads) and once <b>in parallel</b> with the brigade
+      you set in the sidebar (chef threads, stove semaphore, three station
+      queues, a condition variable for delivery). The <b>speedup ratio</b>
+      tells you how much the parallel version helped:
+      <br><br>
+      <code>speedup = time_sequential / time_parallel</code>
+      <br><br>
+      Adjust the sliders to try different configurations — fewer chefs, more
+      stoves, larger order batches — then hit <b>Run benchmark</b>.
+      <div class="config-summary" id="config-chips"></div>
+    </div>
+
+    <div class="grid">
+      <div class="card seq">
+        <div class="label">Sequential — 1 worker</div>
+        <div class="big" id="time-seq">—<span class="unit">s</span></div>
+        <div class="note">No threads. One process cooks every dish one after another.</div>
+      </div>
+      <div class="card par">
+        <div class="label">Parallel — <span id="lbl-par">5</span> chef threads</div>
+        <div class="big" id="time-par">—<span class="unit">s</span></div>
+        <div class="note" id="par-note">
+          <span id="par-detail">2 grill + 2 pasta + 1 dessert</span>.
+          <span id="par-stoves">2 stoves</span> shared via <code>Semaphore</code>.
+        </div>
+      </div>
+    </div>
+
+    <div class="speedup" id="speedup">
+      <span class="badge">Result</span>
+      <div class="big"><span id="speedup-val">—</span>×</div>
+      <div class="note" id="speedup-note">Parallel is this many times faster than sequential.</div>
+      <div class="compare">
+        <div class="row seq">
+          <div class="name">Sequential</div>
+          <div class="track"><div class="fill" id="cmp-seq"></div></div>
+          <div class="val"><span id="cmp-seq-val">—</span>s</div>
+        </div>
+        <div class="row par">
+          <div class="name">Parallel</div>
+          <div class="track"><div class="fill" id="cmp-par"></div></div>
+          <div class="val"><span id="cmp-par-val">—</span>s</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="status" id="status"></div>
+  </main>
+</div>
+
+<script>
+  const FIELDS = ["num_orders", "grill_chefs", "pasta_chefs",
+                  "dessert_chefs", "num_stoves"];
+  const LBL = { num_orders:"v-orders", grill_chefs:"v-grill",
+                pasta_chefs:"v-pasta", dessert_chefs:"v-dessert",
+                num_stoves:"v-stoves" };
+
+  function getCfg() {
+    const c = {};
+    for (const f of FIELDS) c[f] = Number(document.getElementById(f).value);
+    return c;
+  }
+
+  function syncLabels() {
+    for (const f of FIELDS) {
+      document.getElementById(LBL[f]).textContent =
+        document.getElementById(f).value;
+    }
+    const c = getCfg();
+    const total = c.grill_chefs + c.pasta_chefs + c.dessert_chefs;
+    document.getElementById("lbl-par").textContent = total;
+    document.getElementById("par-detail").textContent =
+      `${c.grill_chefs} grill + ${c.pasta_chefs} pasta + ${c.dessert_chefs} dessert`;
+    document.getElementById("par-stoves").textContent =
+      `${c.num_stoves} stove${c.num_stoves === 1 ? "" : "s"}`;
+    renderChips(c);
+  }
+
+  function renderChips(c) {
+    const total = c.grill_chefs + c.pasta_chefs + c.dessert_chefs;
+    document.getElementById("config-chips").innerHTML = `
+      <div class="chip">Orders: <b>${c.num_orders}</b></div>
+      <div class="chip">Chefs: <b>${total}</b></div>
+      <div class="chip">Stoves: <b>${c.num_stoves}</b></div>
+      <div class="chip">Grill: <b>${c.grill_chefs}</b></div>
+      <div class="chip">Pasta: <b>${c.pasta_chefs}</b></div>
+      <div class="chip">Dessert: <b>${c.dessert_chefs}</b></div>`;
+  }
+
+  FIELDS.forEach(f => document.getElementById(f)
+    .addEventListener("input", syncLabels));
+
+  // Load whatever the live simulation is using right now.
+  (async function () {
+    try {
+      const r = await fetch("/api/config");
+      const cfg = await r.json();
+      const map = { num_orders: "max_orders",
+                    grill_chefs: "grill_chefs",
+                    pasta_chefs: "pasta_chefs",
+                    dessert_chefs: "dessert_chefs",
+                    num_stoves: "num_stoves" };
+      for (const k in map) {
+        if (map[k] in cfg) document.getElementById(k).value = cfg[map[k]];
+      }
+    } catch (e) { console.warn("config load failed", e); }
+    syncLabels();
+  })();
+
+  const btn = document.getElementById("run");
+  const status = document.getElementById("status");
+  let polling = null;
+
+  function setStatus(text, running) {
+    status.className = "status" + (running ? " run" : "");
+    status.innerHTML = (running ? '<span class="spinner"></span>' : '') + text;
+  }
+
+  async function poll() {
+    const r = await fetch("/api/benchmark/state");
+    const s = await r.json();
+    if (s.status === "running") {
+      setStatus("Running benchmark… (this can take a few seconds)", true);
+      return;
+    }
+    clearInterval(polling); polling = null;
+    if (s.status === "error" || (s.result && s.result.error)) {
+      setStatus("Error: " + (s.result?.error || "unknown"), false);
+      btn.disabled = false; return;
+    }
+    if (s.status === "done" && s.result) {
+      const r = s.result;
+      document.getElementById("time-seq").innerHTML = r.time_sequential + '<span class="unit">s</span>';
+      document.getElementById("time-par").innerHTML = r.time_parallel  + '<span class="unit">s</span>';
+      document.getElementById("speedup-val").textContent = r.speedup;
+      document.getElementById("speedup").classList.add("visible");
+      document.getElementById("speedup-note").textContent =
+        `Parallel finished ${r.speedup}× faster than sequential ` +
+        `(${r.time_parallel}s vs ${r.time_sequential}s) with ` +
+        `${r.total_chefs} chefs and ${r.num_stoves} stoves.`;
+
+      // Comparison bars
+      const max = Math.max(r.time_sequential, r.time_parallel) || 1;
+      document.getElementById("cmp-seq").style.width =
+        `${(r.time_sequential / max * 100).toFixed(1)}%`;
+      document.getElementById("cmp-par").style.width =
+        `${(r.time_parallel  / max * 100).toFixed(1)}%`;
+      document.getElementById("cmp-seq-val").textContent = r.time_sequential;
+      document.getElementById("cmp-par-val").textContent = r.time_parallel;
+
+      // Update side cards with actual brigade used
+      document.getElementById("lbl-par").textContent = r.total_chefs;
+      document.getElementById("par-detail").textContent =
+        `${r.grill_chefs} grill + ${r.pasta_chefs} pasta + ${r.dessert_chefs} dessert`;
+      document.getElementById("par-stoves").textContent =
+        `${r.num_stoves} stove${r.num_stoves === 1 ? "" : "s"}`;
+
+      setStatus(`Done — ${r.num_orders} orders ran in `
+                + `${r.time_sequential}s sequentially vs `
+                + `${r.time_parallel}s in parallel.`, false);
+      btn.disabled = false;
+    }
+  }
+
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    document.getElementById("speedup").classList.remove("visible");
+    document.getElementById("time-seq").innerHTML = '—<span class="unit">s</span>';
+    document.getElementById("time-par").innerHTML = '—<span class="unit">s</span>';
+    setStatus("Starting…", true);
+    await fetch("/api/benchmark/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(getCfg()),
+    });
+    polling = setInterval(poll, 800);
+  });
+</script>
+</body>
+</html>
